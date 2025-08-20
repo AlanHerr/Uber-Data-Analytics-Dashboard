@@ -10,7 +10,7 @@ class uberExtractor:
         data = pd.read_csv (self.csv)
 
     def response ():
-        return data.head(5)
+        return self.data.head(5)
 
     
     
