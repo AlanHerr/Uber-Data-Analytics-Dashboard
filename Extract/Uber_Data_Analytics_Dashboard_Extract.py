@@ -1,11 +1,16 @@
 import requests
+import pandas as pd 
+import numpy as np
 
-url = "https://ipinfo.io/190.60.194.114/json"
+class uberExtractor:
+    def __init__ (self, csv_path):
+        self.csv = csv_path
+    
+    def  queries (self):
+        data = pd.read_csv (self.csv)
 
-try: 
-    response = requests.get(url)
-    data = response.json()
-    print(data)
+    def response ():
+        return data.head(5)
 
-except:
-    print ("hubo un error")
+    
+    

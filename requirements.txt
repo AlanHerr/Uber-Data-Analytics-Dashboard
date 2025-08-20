@@ -1,1 +1,3 @@
-requests
+Requests 
+pandas 
+numpy
