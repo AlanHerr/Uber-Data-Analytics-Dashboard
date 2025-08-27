@@ -1,6 +1,6 @@
-import requests  # Importa la librería 'requests' para hacer peticiones HTTP (aunque no se usa en este código, es posible que sea parte del proyecto más grande)
+import requests  # Importa la librería 'requests' para hacer peticiones HTTP
 import pandas as pd  # Importa pandas, una librería potente para manipulación y análisis de datos en Python
-import numpy as np  # Importa numpy, una librería para manejar arrays y funciones matemáticas (aunque no se usa explícitamente aquí)
+import numpy as np  # Importa numpy, una librería para manejar arrays y funciones matemáticas 
 
 class uberExtractor:
     def __init__(self, csv_path: str, output_path: str):  
