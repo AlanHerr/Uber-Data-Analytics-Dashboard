@@ -214,3 +214,46 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Data files and databases
+*.db
+*.sqlite
+*.sqlite3
+*.csv.bak
+*.json.bak
+
+# Data Analytics specific
+data/
+datasets/
+raw_data/
+processed_data/
+temp_data/
+
+# Jupyter Notebooks checkpoints
+.ipynb_checkpoints/
+
+# Analytics and ML model files
+*.pkl
+*.joblib
+*.h5
+*.model
+
+# Log files
+logs/
+*.log
+
+# Temporary files
+tmp/
+temp/
+
+# IDE specific
+.vscode/settings.json
+.idea/
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Cache directories
+.cache/
+cache/
