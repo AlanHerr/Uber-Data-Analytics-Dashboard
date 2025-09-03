@@ -1,16 +1,22 @@
 from Extract.Uber_Data_Analytics_Dashboard_Extract import uberExtractor
+from Transform.Uber_Data_Analytics_Dashboard_Transform import uberTransformer
+from Load.Uber_Data_Analytics_Dashboard_Load import uberLoader
+import config  # Importa el archivo de configuración
 
-# Ruta del archivo CSV original
-input_file = "ncr_ride_bookings.csv"
+# Usar las variables de configuración para las rutas
+input_file = config.input_file
+output_file = config.output_file
 
-# Ruta donde se guardará el archivo limpio
-output_file = "ncr_ride_bookings_cleaned.csv"
+# Extract
+extractor = uberExtractor(input_file)
+data = extractor.extract_data()
 
-# Crear una instancia de uberExtractor con la ruta de entrada y salida
-extractor = uberExtractor(input_file, output_file)
+# Transform
+transformer = uberTransformer(data)
+transformed_data = transformer.transform_data()
 
-# Llamar al método queries() para cargar, limpiar y guardar los datos
-extractor.queries()
+# Load
+loader = uberLoader(transformed_data, output_file)
+loader.load_data()
 
-# Confirmación de que el archivo limpio se generó
-print(f"El archivo limpio ha sido guardado en: {output_file}")
+print("ETL proceso completado exitosamente.")
