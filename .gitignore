@@ -215,12 +215,6 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Data files and databases
-*.db
-*.sqlite
-*.sqlite3
-*.csv.bak
-*.json.bak
 
 # Data Analytics specific
 data/
