@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 anyio==4.9.0
 argon2-cffi==25.1.0
 argon2-cffi-bindings==21.2.0
@@ -121,11 +121,5 @@ wcwidth==0.2.13
 webcolors==24.11.1
 webencodings==0.5.1
 websocket-client==1.8.0
-=======
-numpy==2.3.2
-pandas==2.3.2
-python-dateutil==2.9.0.post0
-pytz==2025.2
-six==1.17.0
-tzdata==2025.2
->>>>>>> Release
+
+
