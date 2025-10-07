@@ -1,6 +1,8 @@
 import requests  # Importa la librería 'requests' para hacer peticiones HTTP
-import pandas as pd  # Importa pandas, una librería potente para manipulación y análisis de datos en Python
-import numpy as np  # Importa numpy, una librería para manejar arrays y funciones matemáticas 
+from pyspark.sql import SparkSession  # Importa SparkSession para trabajar con DataFrames de Spark
+from pyspark.sql.functions import col, to_timestamp, regexp_replace, when, isnan, isnull, concat_ws, trim, try_to_timestamp, lit
+from pyspark.sql.types import StringType, DoubleType, BooleanType, TimestampType
+import pyspark.sql.functions as F 
 
 class uberExtractor:
     def __init__(self, csv_path: str, output_path: str):  
@@ -10,71 +12,105 @@ class uberExtractor:
         
         self.csv = csv_path  # Almacena la ruta del archivo CSV original
         self.output_path = output_path  # Almacena la ruta de salida del archivo limpio
-        self.data = None  # Inicializa el atributo 'data', que almacenará los datos del archivo CSV
+        self.data = None  # Inicializa el atributo 'data', que almacenará los datos del DataFrame de Spark
+        self.spark = SparkSession.builder \
+            .appName("UberDataAnalytics") \
+            .config("spark.sql.adaptive.enabled", "true") \
+            .config("spark.sql.adaptive.coalescePartitions.enabled", "true") \
+            .getOrCreate()
 
     def remove_quotes_and_spaces(self):
         """
         Elimina las comillas dobles (") y los espacios en blanco al principio y al final
-        de las cadenas de texto en las columnas relevantes.
+        de las cadenas de texto en las columnas relevantes usando PySpark.
         """
         # Para las columnas 'Booking ID' y 'Customer ID', eliminamos las comillas dobles y los espacios
-        self.data['Booking ID'] = self.data['Booking ID'].str.strip('"').str.strip()  # Elimina comillas y espacios de 'Booking ID'
-        self.data['Customer ID'] = self.data['Customer ID'].str.strip('"').str.strip()  # Elimina comillas y espacios de 'Customer ID'
+        self.data = self.data.withColumn("Booking ID", 
+                                        trim(regexp_replace(col("Booking ID"), '"', ''))) \
+                           .withColumn("Customer ID", 
+                                     trim(regexp_replace(col("Customer ID"), '"', '')))
 
     def queries(self):
         """
-        Carga los datos desde un archivo CSV, realiza una limpieza y transformación de los datos
+        Carga los datos desde un archivo CSV usando PySpark, realiza una limpieza y transformación de los datos
         y luego guarda el DataFrame limpio en un archivo CSV de salida.
         """
-        # Cargar los datos desde el archivo CSV
-        self.data = pd.read_csv(self.csv)  # Usa pandas para leer el archivo CSV y cargarlo en el DataFrame 'self.data'
+        # Cargar los datos desde el archivo CSV usando PySpark
+        self.data = self.spark.read.csv(self.csv, header=True, inferSchema=True)
 
         # Limpiar y transformar las columnas de datos
 
-        # Limpiar la columna 'Date' y convertirla al formato de fecha (datetime)
-        self.data['Date'] = pd.to_datetime(self.data['Date'], errors='coerce')  # Convierte 'Date' a formato datetime, usa 'coerce' para manejar valores inválidos
+        # Limpiar la columna 'Date' y convertirla al formato de fecha (timestamp) con manejo de errores
+        self.data = self.data.withColumn("Date", try_to_timestamp(col("Date"), lit("yyyy-MM-dd")))
 
-        # Limpiar la columna 'Time' y convertirla al formato de hora (time)
-        self.data['Time'] = pd.to_datetime(self.data['Time'], format='%H:%M:%S', errors='coerce').dt.time  # Convierte 'Time' a formato hora
-
-        # Crear una nueva columna 'DateTime' combinando las columnas 'Date' y 'Time' para crear un valor completo de fecha y hora
-        self.data['DateTime'] = pd.to_datetime(self.data['Date'].astype(str) + ' ' + self.data['Time'].astype(str), errors='coerce')  # Combina 'Date' y 'Time' en una nueva columna 'DateTime'
+        # Crear una nueva columna 'DateTime' combinando las columnas 'Date' y 'Time' de manera más robusta
+        # Usamos try_to_timestamp para manejar errores de parsing
+        self.data = self.data.withColumn("DateTime", 
+                                       try_to_timestamp(concat_ws(" ", 
+                                                               F.date_format(col("Date"), "yyyy-MM-dd"), 
+                                                               col("Time")), 
+                                                      lit("yyyy-MM-dd HH:mm:ss")))
 
         # Eliminar filas con valores nulos en la columna 'Booking ID'
-        self.data = self.data.dropna(subset=['Booking ID'])  # Elimina filas que tienen 'Booking ID' como NaN (vacío)
+        self.data = self.data.filter(col("Booking ID").isNotNull())
 
         # Rellenar valores nulos en columnas numéricas con 0
-        num_cols = ['Avg VTAT', 'Avg CTAT', 'Booking Value', 'Ride Distance', 'Driver Ratings', 'Customer Rating']  # Definir las columnas numéricas
-        for col in num_cols:  # Iterar sobre cada columna numérica
-            if col in self.data.columns:  # Si la columna existe en el DataFrame
-                self.data[col] = pd.to_numeric(self.data[col], errors='coerce').fillna(0)  # Convierte a numérico y reemplaza NaN con 0
+        num_cols = ['Avg VTAT', 'Avg CTAT', 'Booking Value', 'Ride Distance', 'Driver Ratings', 'Customer Rating']
+        for column in num_cols:
+            if column in self.data.columns:
+                # Manejo seguro usando regexp_replace para limpiar "null" strings primero
+                self.data = self.data.withColumn(column, 
+                                               regexp_replace(col(column), "^null$", "0")) \
+                                   .withColumn(column,
+                                             when(col(column).isNull(), lit(0.0))
+                                             .otherwise(col(column).cast(DoubleType())))
 
         # Rellenar valores nulos en columnas de texto con 'Unknown'
         text_cols = ['Booking Status', 'Vehicle Type', 'Pickup Location', 'Drop Location',
                      'Reason for cancelling by Customer', 'Driver Cancellation Reason',
-                     'Incomplete Rides Reason', 'Payment Method']  # Definir las columnas de texto
-        for col in text_cols:  # Iterar sobre cada columna de texto
-            if col in self.data.columns:  # Si la columna existe en el DataFrame
-                self.data[col] = self.data[col].fillna('Unknown')  # Rellenar valores NaN con 'Unknown'
+                     'Incomplete Rides Reason', 'Payment Method']
+        for column in text_cols:
+            if column in self.data.columns:
+                # Tratamiento seguro para columnas de texto usando regexp_replace
+                self.data = self.data.withColumn(column, 
+                                               regexp_replace(col(column), "^null$", "Unknown")) \
+                                   .withColumn(column,
+                                             when(col(column).isNull(), lit("Unknown"))
+                                             .otherwise(col(column)))
 
         # Convertir las columnas de flags (booleanos) a valores booleanos
-        flag_cols = ['Cancelled Rides by Customer', 'Cancelled Rides by Driver', 'Incomplete Rides']  # Definir las columnas de flags
-        for col in flag_cols:  # Iterar sobre cada columna de flags
-            if col in self.data.columns:  # Si la columna existe en el DataFrame
-                self.data[col] = self.data[col].astype(bool)  # Convertir la columna a tipo booleano
+        flag_cols = ['Cancelled Rides by Customer', 'Cancelled Rides by Driver', 'Incomplete Rides']
+        for column in flag_cols:
+            if column in self.data.columns:
+                # Tratamiento seguro para columnas booleanas usando regexp_replace
+                self.data = self.data.withColumn(column, 
+                                               regexp_replace(col(column), "^null$", "false")) \
+                                   .withColumn(column,
+                                             when(col(column).isNull(), lit(False))
+                                             .otherwise(col(column).cast(BooleanType())))
 
-        # Eliminar comillas y espacios de las columnas necesarias (como 'Booking ID' y 'Customer ID')
-        self.remove_quotes_and_spaces()  # Llamamos a la función que limpia comillas y espacios en las columnas relevantes
+        # Eliminar comillas y espacios de las columnas necesarias
+        self.remove_quotes_and_spaces()
 
-        # Guardar el DataFrame limpio en un nuevo archivo CSV
-        self.data.to_csv(self.output_path, index=False)  # Guarda los datos limpios en el archivo de salida, sin los índices
+        # Guardar el DataFrame limpio en un nuevo archivo CSV (solo pandas por ahora para evitar errores de timestamp)
+        # self.data.coalesce(1).write.mode("overwrite").option("header", "true").csv(self.output_path.replace('.csv', '_spark'))
+        
+        # Guardar usando pandas para mayor compatibilidad
+        self.data.toPandas().to_csv(self.output_path, index=False)
 
-        return self.data  # Devuelve el DataFrame limpio
+        return self.data  # Devuelve el DataFrame de Spark limpio
 
     def response(self):
         """
         Retorna las primeras filas del DataFrame limpio para una vista previa.
         """
-        if self.data is None:  # Si no se ha cargado ningún dato
-            raise ValueError("Los datos no han sido cargados. Llama al método queries() primero.")  # Lanza un error si no hay datos
-        return self.data.head()  # Retorna las primeras filas del DataFrame limpio
+        if self.data is None:
+            raise ValueError("Los datos no han sido cargados. Llama al método queries() primero.")
+        return self.data.show(5)  # Muestra las primeras 5 filas del DataFrame de Spark
+    
+    def close_spark(self):
+        """
+        Cierra la sesión de Spark para liberar recursos.
+        """
+        if self.spark:
+            self.spark.stop()
